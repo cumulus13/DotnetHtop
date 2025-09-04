@@ -1,0 +1,57 @@
+{
+"CpuThresholds": [
+{
+"Percentage": 95,
+"BackgroundColor": "Red",
+"ForegroundColor": "White"
+},
+{
+"Percentage": 85,
+"BackgroundColor": "Magenta",
+"ForegroundColor": "White"
+},
+{
+"Percentage": 75,
+"BackgroundColor": "Yellow",
+"ForegroundColor": "Black"
+},
+{
+"Percentage": 60,
+"BackgroundColor": "DarkYellow",
+"ForegroundColor": "Black"
+},
+{
+"Percentage": 49,
+"BackgroundColor": "Green",
+"ForegroundColor": "Black"
+}
+],
+"MemoryThresholds": [
+{
+"Percentage": 95,
+"BackgroundColor": "Red",
+"ForegroundColor": "White"
+},
+{
+"Percentage": 85,
+"BackgroundColor": "Magenta",
+"ForegroundColor": "White"
+},
+{
+"Percentage": 75,
+"BackgroundColor": "Yellow",
+"ForegroundColor": "Black"
+},
+{
+"Percentage": 60,
+"BackgroundColor": "DarkYellow",
+"ForegroundColor": "Black"
+},
+{
+"Percentage": 49,
+"BackgroundColor": "Green",
+"ForegroundColor": "Black"
+}
+],
+"DefaultForegroundColor": "Cyan"
+}
