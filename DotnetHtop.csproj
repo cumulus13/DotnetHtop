@@ -5,10 +5,27 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <!-- Properties to create a single-file executable with an icon -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+    
+    <!-- Choose the correct RuntimeIdentifier for your platform -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.8" />
+  </ItemGroup>
+
+  <!-- This item group ensures config.json is included in the output directory -->
+  <ItemGroup>
+    <Content Include="config.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

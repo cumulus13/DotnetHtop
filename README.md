@@ -61,4 +61,16 @@ dotnet run
 
 The console will clear, and you will see the list of processes with their real-time usage. Use the key commands listed at the top of the application to sort the output. To exit, just press Q.
 
+Step 6: Build
+dotnet publish -c Release
+
+* **`dotnet publish`**: The command to publish the application.
+* **`-c Release`**: This creates a release build, which is optimized for performance and smaller size.
+* **`--self-contained`**: This flag is not needed anymore when you specify a `RuntimeIdentifier` in your `.csproj` file, as it's the default behavior. The `RuntimeIdentifier` will automatically include the .NET runtime with the application.
+
+After the command runs, navigate to the `bin/Release/net8.0/<your-rid>/publish` folder. For example, on Windows, the path would be `bin/Release/net8.0/win-x64/publish`. Inside this folder, you will find a single executable file named `DotnetHtop.exe` with your icon!
+
 I hope this helps you get started with .NET! Feel free to ask if you have any more questions about the code or the development process.
+
+## Author
+[Hadi Cahyadi](mailto:cumulus13@gmail.com)
