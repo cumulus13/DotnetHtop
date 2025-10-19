@@ -1,0 +1,338 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+
+// Define the classes to represent the structure of the config.json file
+public class ColorMapping
+{
+    public required int Percentage { get; set; }
+    public required string BackgroundColor { get; set; }
+    public required string ForegroundColor { get; set; }
+}
+
+public class Config
+{
+    public required List<ColorMapping> CpuThresholds { get; set; }
+    public required List<ColorMapping> MemoryThresholds { get; set; }
+    public required string DefaultForegroundColor { get; set; }
+}
+
+public class ProcessInfo
+{
+    public required int Id { get; set; }
+    public required string Name { get; set; }
+    public required double CpuUsage { get; set; }
+    public required long MemoryUsageMb { get; set; }
+}
+
+public class Program
+{
+    private static Config _config = GetDefaultConfig();
+    private static ConsoleColor _defaultForegroundColor;
+    private static bool _sortByCpu = true; // Sort by CPU by default
+    private static bool _sortDescending = true; // Sort descending by default
+
+    // Helper method to get the correct colors based on usage percentage and thresholds
+    private static (ConsoleColor background, ConsoleColor foreground) GetColors(double usagePercentage, List<ColorMapping> thresholds)
+    {
+        // Get the color configuration based on the usage percentage.
+        // The list is already sorted by Percentage, so we find the first
+        // threshold that the usage exceeds.
+        var colorMap = thresholds.FirstOrDefault(t => usagePercentage >= t.Percentage);
+
+        if (colorMap != null)
+        {
+            // Convert the string color names from the config file to ConsoleColor enums
+            Enum.TryParse(colorMap.BackgroundColor, out ConsoleColor backgroundColor);
+            Enum.TryParse(colorMap.ForegroundColor, out ConsoleColor foregroundColor);
+            return (backgroundColor, foregroundColor);
+        }
+
+        // If no threshold is met, return the default colors
+        return (ConsoleColor.Black, _defaultForegroundColor);
+    }
+
+    public static void Main(string[] args)
+    {
+        // Load configuration from config.json
+        LoadConfig();
+
+        int width = Console.WindowWidth;
+
+        // Print static header and instructions only once
+        Console.Title = ".NET Process Monitor";
+        if (width >= 25)
+        {
+            // normal, penuh sepanjang terminal
+            Console.WriteLine(new string('-', width));
+        }
+        else {
+            Console.WriteLine("--------------------------------------------------------------------------------");
+        }
+        Console.WriteLine("Press 'Q' to quit, 'C' to sort by CPU, 'M' to sort by Memory.");
+        Console.WriteLine("Press 'A' for ascending, 'D' for descending.");
+        if (width >= 25)
+        {
+            // normal, penuh sepanjang terminal
+            Console.WriteLine(new string('-', width));
+        }
+        else {
+            Console.WriteLine("--------------------------------------------------------------------------------");
+        }
+        Console.WriteLine($"{"PID",-8} {"Process Name",-40} {"CPU %",-10} {"Memory (MB)",-15}");
+        if (width >= 25)
+        {
+            // normal, penuh sepanjang terminal
+            Console.WriteLine(new string('-', width));
+        }
+        else {
+            Console.WriteLine("--------------------------------------------------------------------------------");
+        }
+        
+        // Capture the starting cursor position for the dynamic content
+        int startingCursorTop = Console.CursorTop;
+
+        while (true)
+        {
+            // Set the cursor position to the start of the dynamic content area
+            Console.SetCursorPosition(0, startingCursorTop);
+
+            // Get a snapshot of all processes and their initial CPU times
+            var processes = Process.GetProcesses();
+            var cpuTimes1 = new Dictionary<int, TimeSpan>();
+            foreach (var process in processes)
+            {
+                try
+                {
+                    cpuTimes1[process.Id] = process.TotalProcessorTime;
+                }
+                catch (Exception)
+                {
+                    // Ignore processes we can't access
+                }
+            }
+
+            // Wait for 1 second to get a new snapshot
+            Thread.Sleep(1000);
+
+            // Get a new list of processes and their new CPU times
+            processes = Process.GetProcesses();
+            var cpuTimes2 = new Dictionary<int, TimeSpan>();
+            foreach (var process in processes)
+            {
+                try
+                {
+                    cpuTimes2[process.Id] = process.TotalProcessorTime;
+                }
+                catch (Exception)
+                {
+                    // Ignore processes we can't access
+                }
+            }
+
+            // Calculate the CPU and memory usage for each process
+            var processInfos = new List<ProcessInfo>();
+            foreach (var process in processes)
+            {
+                try
+                {
+                    // Calculate CPU usage as a percentage
+                    double cpuUsage = 0;
+                    if (cpuTimes1.ContainsKey(process.Id) && cpuTimes2.ContainsKey(process.Id))
+                    {
+                        var timeElapsed = cpuTimes2[process.Id] - cpuTimes1[process.Id];
+                        cpuUsage = timeElapsed.TotalMilliseconds / 10.0;
+                        // if you have a multi-core CPU, you might want to adjust the calculation
+                        // cpuUsage = Math.Min(timeElapsed.TotalMilliseconds / 10.0, 100.0);
+                    }
+                    
+                    // Calculate memory usage in MB
+                    var memoryUsageMb = process.WorkingSet64 / (1024 * 1024);
+
+                    processInfos.Add(new ProcessInfo
+                    {
+                        Id = process.Id,
+                        Name = process.ProcessName,
+                        CpuUsage = cpuUsage,
+                        MemoryUsageMb = memoryUsageMb
+                    });
+                }
+                catch (Exception)
+                {
+                    // Catch processes that have exited during the refresh or have access denied issues
+                }
+            }
+
+            // Sort the process list based on user selection
+            IOrderedEnumerable<ProcessInfo> sortedProcesses;
+            if (_sortByCpu)
+            {
+                sortedProcesses = _sortDescending
+                    ? processInfos.OrderByDescending(p => p.CpuUsage)
+                    : processInfos.OrderBy(p => p.CpuUsage);
+            }
+            else // Sort by memory
+            {
+                sortedProcesses = _sortDescending
+                    ? processInfos.OrderByDescending(p => p.MemoryUsageMb)
+                    : processInfos.OrderBy(p => p.MemoryUsageMb);
+            }
+
+            // Display the sorted list with colors, overwriting the old content
+            int linesWritten = 0;
+            foreach (var info in sortedProcesses.Take(Console.WindowHeight - startingCursorTop - 1))
+            {
+                var (cpuBackground, cpuForeground) = GetColors(info.CpuUsage, _config.CpuThresholds);
+                var (memBackground, memForeground) = GetColors((double)info.MemoryUsageMb / GetTotalPhysicalMemoryMb(), _config.MemoryThresholds);
+                
+                // Set the default console colors
+                Console.BackgroundColor = ConsoleColor.Black;
+                Console.ForegroundColor = _defaultForegroundColor;
+
+                // Format and print the row with colors
+                Console.Write($"{info.Id,-8}");
+                Console.Write($"{info.Name.Truncate(40),-40}");
+                
+                // Apply CPU colors
+                Console.BackgroundColor = cpuBackground;
+                Console.ForegroundColor = cpuForeground;
+                Console.Write($"{info.CpuUsage:F2}%".PadRight(10));
+                
+                // Apply Memory colors
+                Console.BackgroundColor = memBackground;
+                Console.ForegroundColor = memForeground;
+                Console.Write($"{info.MemoryUsageMb} MB".PadRight(15));
+                
+                // Reset colors and move to the next line
+                Console.ResetColor();
+                Console.WriteLine();
+                linesWritten++;
+            }
+            
+            // Clear any remaining lines from the previous update
+            for (int i = linesWritten; i < Console.WindowHeight - startingCursorTop - 1; i++)
+            {
+                Console.WriteLine(new string(' ', Console.WindowWidth));
+            }
+            // Reset cursor to the beginning of the dynamic content area for the next update
+            Console.SetCursorPosition(0, startingCursorTop + linesWritten);
+
+            // Check for user input without blocking the display
+            if (Console.KeyAvailable)
+            {
+                var key = Console.ReadKey(true).KeyChar;
+                switch (char.ToUpper(key))
+                {
+                    case 'Q':
+                        Console.Clear();
+                        Console.WriteLine("Exiting application.");
+                        return;
+                    case 'C':
+                        _sortByCpu = true;
+                        break;
+                    case 'M':
+                        _sortByCpu = false;
+                        break;
+                    case 'D':
+                        _sortDescending = true;
+                        break;
+                    case 'A':
+                        _sortDescending = false;
+                        break;
+                }
+            }
+        }
+    }
+
+    private static void LoadConfig()
+    {
+        try
+        {
+            string exeDir = AppContext.BaseDirectory;
+            string configPath = Path.Combine(exeDir, "config.json");
+            var jsonString = File.ReadAllText(configPath);
+            
+            var loadedConfig = JsonSerializer.Deserialize<Config>(jsonString);
+            if (loadedConfig != null)
+            {
+                _config = loadedConfig;
+            }
+            
+            // Sort thresholds in descending order to apply the highest threshold first
+            _config.CpuThresholds = _config.CpuThresholds.OrderByDescending(t => t.Percentage).ToList();
+            _config.MemoryThresholds = _config.MemoryThresholds.OrderByDescending(t => t.Percentage).ToList();
+
+            Enum.TryParse(_config.DefaultForegroundColor, out _defaultForegroundColor);
+        }
+        catch (FileNotFoundException)
+        {
+            Console.WriteLine("config.json not found. Using default values.");
+            _config = GetDefaultConfig();
+        }
+        catch (JsonException ex)
+        {
+            Console.WriteLine($"Error reading config.json: {ex.Message}. Using default values.");
+            _config = GetDefaultConfig();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"An unexpected error occurred: {ex.Message}. Using default values.");
+            _config = GetDefaultConfig();
+        }
+    }
+
+    private static Config GetDefaultConfig()
+    {
+        return new Config
+        {
+            CpuThresholds = new List<ColorMapping>
+            {
+                new ColorMapping { Percentage = 95, BackgroundColor = "Red", ForegroundColor = "White" },
+                new ColorMapping { Percentage = 85, BackgroundColor = "Magenta", ForegroundColor = "White" },
+                new ColorMapping { Percentage = 75, BackgroundColor = "Yellow", ForegroundColor = "Black" },
+                new ColorMapping { Percentage = 60, BackgroundColor = "DarkYellow", ForegroundColor = "Black" },
+                new ColorMapping { Percentage = 49, BackgroundColor = "Green", ForegroundColor = "Black" }
+            },
+            MemoryThresholds = new List<ColorMapping>
+            {
+                new ColorMapping { Percentage = 95, BackgroundColor = "Red", ForegroundColor = "White" },
+                new ColorMapping { Percentage = 85, BackgroundColor = "Magenta", ForegroundColor = "White" },
+                new ColorMapping { Percentage = 75, BackgroundColor = "Yellow", ForegroundColor = "Black" },
+                new ColorMapping { Percentage = 60, BackgroundColor = "DarkYellow", ForegroundColor = "Black" },
+                new ColorMapping { Percentage = 49, BackgroundColor = "Green", ForegroundColor = "Black" }
+            },
+            DefaultForegroundColor = "Cyan"
+        };
+    }
+
+    // Helper method to get total physical memory
+    private static ulong GetTotalPhysicalMemoryMb()
+    {
+        try
+        {
+            // This is a more robust way to get total memory on a Windows machine.
+            // It requires the System.Diagnostics.PerformanceCounter package.
+            var memInfo = new System.Diagnostics.PerformanceCounter("Memory", "Available MBytes");
+            return (ulong)memInfo.RawValue;
+        }
+        catch (Exception)
+        {
+            // If we can't access performance counters, return a default value
+            return 0;
+        }
+    }
+}
+
+// Extension method for string truncation
+public static class StringExtensions
+{
+    public static string Truncate(this string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        return value.Length <= maxLength ? value : value.Substring(0, maxLength);
+    }
+}
